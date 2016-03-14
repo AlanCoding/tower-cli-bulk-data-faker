@@ -1,0 +1,4 @@
+fake-factory
+ansible-tower-cli
+pyyaml
+requests
