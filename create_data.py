@@ -4,14 +4,19 @@ from faker import Factory
 import random
 from copy import copy
 import time
+import yaml
 
 fake = Factory.create()
 debug = False
 
-res_list = [
+res_list_reference = [
     'organization', 'team', 'project', 'user', 'inventory', 'host',
     'job_template'
 ]
+
+# if desired, you can specify only a certain subset to run here
+res_list = res_list_reference
+
 # Not developed yet:
 #  group
 #  credential
@@ -86,7 +91,7 @@ def create_resource_data(res):
     fields = copy(res_fields[res])
     ref_lists = {}
     for fd in copy(fields):
-        if fd in res_list:
+        if fd in res_list_reference:
             ref_mod = tower_cli.get_resource(fd)
             ref_lists[fd] = ref_mod.list(all_pages=True)['results']
             fields.remove(fd)
@@ -134,23 +139,40 @@ def quick_demo():
         debug = True
         create_resource_data(res)
 
+def get_count(res):
+    res_mod = tower_cli.get_resource(res)
+    r = res_mod.list()
+    return r['count']
+
 
 if __name__ == "__main__":
     start_time = time.time()
     if len(sys.argv) == 1:
-        print '  Useage:'
-        print 'python create_data.py <subset>'
-        print ''
+        print '\n  Usage:'
+        print 'python create_data.py <subset> <count>\n'
         print ' subset options:'
+        for res in res_list_reference:
+            print '   - ' + res
     elif sys.argv[1] == 'demo':
         quick_demo()
+    elif sys.argv[1] == 'counts':
+        print '\n  Running resource counts:'
+        for res in res_list_reference:
+            print '  ' + res + ': ' + str(get_count(res))
     elif len(sys.argv) > 1:
         if sys.argv[-1] == 'debug':
             debug = True
         if sys.argv[1] == 'all':
             for res in res_list:
-                print ''
-                print ' ----- ' + res + ' ----- '
+                print '\n ----- ' + res + ' ----- '
+                create_resource_data(res)
+        elif sys.argv[1].endswith('.yml'):
+            with open(sys.argv[1], 'r') as f:
+                filetext = f.read()
+            Nres = yaml.load(filetext)
+            res_list = Nres.keys()
+            for res in res_list:
+                print '\n ----- ' + res + ' ----- '
                 create_resource_data(res)
         else:
             res = sys.argv[1]

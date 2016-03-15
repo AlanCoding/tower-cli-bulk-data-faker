@@ -59,6 +59,16 @@ in the `Nres` dictionary...
 python create_data.py all
 ```
 
+Alternatively, define a file with the resources and counts (as yaml)
+in it and give that as an argument.
+
+```bash
+python create_data.py run_data.yml
+```
+
+For example, your file might say to create 2 users and 1 project, and this
+command will carry out the creation of those.
+
 ### Getting API Response Times
 
 Store your credentials in a yaml file.
