@@ -11,7 +11,7 @@ debug = False
 
 res_list_reference = [
     'organization', 'team', 'project', 'user', 'inventory', 'host',
-    'job_template'
+    'credential', 'job_template'
 ]
 
 # if desired, you can specify only a certain subset to run here
@@ -30,6 +30,7 @@ Nres = {
     'user': 368,
     'inventory': 87,
     'host': 247,
+    'credential': 1,
     'job_template': 3216
 }
 
@@ -40,7 +41,8 @@ res_fields = {
     'user': ['username', 'password', 'email', 'first_name', 'last_name'],
     'inventory': ['name', 'description', 'organization'],
     'host': ['name', 'inventory'],
-    'job_template': ['name', 'description', 'inventory', 'project']
+    'credential': ['name', 'description', 'username', 'password', 'team', ],
+    'job_template': ['name', 'credential', 'description', 'inventory', 'project']
 }
 res_extras = {
     'project': {
@@ -49,8 +51,10 @@ res_extras = {
         'monitor': False
     },
     'job_template': {
-        'credential': 5,
         'playbook': 'helloworld.yml'
+    },
+    'credential': {
+        'kind': 'ssh'
     }
 }
 res_assoc = {
@@ -93,7 +97,10 @@ def create_resource_data(res):
     for fd in copy(fields):
         if fd in res_list_reference:
             ref_mod = tower_cli.get_resource(fd)
-            ref_lists[fd] = ref_mod.list(all_pages=True)['results']
+            list_kwargs = {'all_pages': True}
+            if fd == 'credential':
+                list_kwargs['kind'] = 'ssh'
+            ref_lists[fd] = ref_mod.list(**list_kwargs)['results']
             fields.remove(fd)
     if res in res_assoc:
         for fd in res_assoc[res]:
@@ -171,9 +178,10 @@ if __name__ == "__main__":
                 filetext = f.read()
             Nres = yaml.load(filetext)
             res_list = Nres.keys()
-            for res in res_list:
-                print '\n ----- ' + res + ' ----- '
-                create_resource_data(res)
+            for res in res_list_reference:
+                if res in res_list:
+                    print '\n ----- ' + res + ' ----- '
+                    create_resource_data(res)
         else:
             res = sys.argv[1]
             if len(sys.argv) > 2 and sys.argv[2].isdigit():

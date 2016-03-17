@@ -33,6 +33,7 @@ Creation order:
  - Teams
  - Projects
  - Users
+ - Job Templates
 
 These don't necessarily need to go in this order, and you could draw a
 graph with arrows of what's needed for others. Each of these have 
