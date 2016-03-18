@@ -19,7 +19,6 @@ res_list = res_list_reference
 
 # Not developed yet:
 #  group
-#  credential
 #  job
 
 # Create this many of each resource
@@ -59,21 +58,18 @@ res_extras = {
 }
 res_assoc = {
     'user': {
-        'organization': 'associate',
-        'team': 'associate'
+        'organization': {
+            'associate': 2,
+            'associate_admin': 0.5
+        },
+        'team': {
+            'associate': 2
+        }
     },
     'project': {
-        'organization': 'associate_project'
-    }
-}
-# Assign each user 7 organizations, etc.
-Nassoc = {
-    'user': {
-        'organization': 2,
-        'team': 2
-    },
-    'project': {
-        'organization': 3
+        'organization': {
+            'associate_project': 3
+        }
     }
 }
 
