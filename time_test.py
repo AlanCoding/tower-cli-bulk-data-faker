@@ -7,7 +7,7 @@ import sys
 import random
 import time
 import json
-from utils import list_ids
+from utils import load_all_creds, id_based_dict
 import tower_cli
 
 # Global parameters
@@ -35,6 +35,12 @@ def load_endpoint(suffix, creds):
             params={'format': 'json'},
             auth=(creds['username'], creds['password']), 
             verify=False)
+    if r.status_code != 200:
+        print 'Encountered an error getting a response'
+        print '  status_code: ' + str(r.status_code)
+        print '  response: ' + str(r.text)
+        print '  url: ' + built_url
+        raise Exception()
     return r
 
 def load_json(suffix, creds):
@@ -50,7 +56,7 @@ def read_creds(filename):
 def find_field_list(creds):
     try:
         r = load_json('', creds)
-        fields = [v[8:].strip('/') for v in r.values()]
+        fields = [v[8:].strip('/') for v in r.values() if 'authtoken' not in v]
     except:
         print 'NOTICE: failed to load JSON response from server'
         fields = [
@@ -70,13 +76,18 @@ def get_endpoint_data(res, creds):
         try:
             # Fallback option #1, maybe got API html?
             api_time = parse_api_time(r.text, 'X-API-Time')
-            qu_time = parse_api_time(r.text, 'X-API-Query-Time')
-            qu_count = parse_api_time(r.text, 'X-API-Query-Count')
         except:
             # Fallback option #2, not getting data
             api_time = None
+        try:
+            qu_time = parse_api_time(r.text, 'X-API-Query-Time')
+        except:
             qu_time = None
+        try:
+            qu_count = parse_api_time(r.text, 'X-API-Query-Count')
+        except:
             qu_count = None
+
     return (r, api_time, qu_time, qu_count)
 
 
@@ -84,25 +95,70 @@ def tabulated_format(heading, *cells):
     return heading.ljust(col_1) + ''.join([str(cell).ljust(col_width) for cell in cells])
 
 
-def run_timer(creds_file):
+def run_timer(creds_file, sample_sublist_views=False, 
+              sample_detail_views=False, detail_sample_size=5):
     creds = read_creds(creds_file)
     stored_lists = {}
     fields = find_field_list(creds)
-    print ''
-    print 'Table of API response times:'
-    print ''
-    print ' list view results'
+    print '\nTable of API response times:'
+    print '\n top-level list view results'
     print '\njob_templates  '
     print tabulated_format('endpoint', 'time', 'query', 'queries')
     for res in fields:
         r, api_time, qu_time, qu_count = get_endpoint_data(res, creds)
         print tabulated_format(res, api_time, qu_time, qu_count)
-        stored_lists[res] = list_ids(yaml.load(r.text))
+        r_json = yaml.load(r.text)
+        if 'count' in r_json:
+            stored_lists[res] = id_based_dict(r_json)
     print ''
 
+    if sample_detail_views:
+        print '\n detail view statistics (averages)'
+        print tabulated_format('endpoint', 'time', 'query', 'queries')
+        for res in fields:
+            if res not in stored_lists:
+                continue
+            at_total = 0.0
+            qt_total = 0.0
+            qu_total = 0
+            N = detail_sample_size
+            res_ids = stored_lists[res]
+            if len(res_ids) == 0:
+                print res.ljust(col_1) + 'no_records'
+                continue
+            for i in range(N):
+                res_id = random.choice(res_ids.keys())
+                # endpoint = res + '/' + str(res_id)
+                endpoint = res_ids[res_id]['url']
+                r, api_time, qu_time, qu_count = get_endpoint_data(endpoint, creds)
+                at_float = float(api_time.strip('s'))
+                qt_float = float(qu_time.strip('s'))
+                at_total += at_float
+                qt_total += qt_float
+                qu_total += int(qu_count)
+            print tabulated_format(res, at_total/N, qt_total/N, qu_total*1.0/N)
 
-def load_all_creds():
-    return {}
+
+    if sample_sublist_views:
+        print '\n sublist view results'
+        print '    ' + tabulated_format('endpoint', 'time', 'query', 'queries')
+        for res in fields:
+            if res not in stored_lists:
+                continue
+            res_dict = stored_lists[res]
+            N = 1
+            if len(res_dict) == 0:
+                print res.ljust(col_1) + 'no_records'
+                continue
+            for i in range(N):
+                res_id = random.choice(res_dict.keys())
+                item_dict = res_dict[res_id]
+                related_dict = item_dict['related']
+                print '\nrelated field load times for ' + str(res)
+                for relationship in related_dict:
+                    endpoint = related_dict[relationship]
+                    r, api_time, qu_time, qu_count = get_endpoint_data(endpoint, creds)
+                    print '    ' + tabulated_format(relationship, api_time, qu_time, qu_count)
 
 
 def pov_run(username):
@@ -136,7 +192,7 @@ if __name__ == "__main__":
     # Does user ask for stats on detial views?
     for i in range(len(args)):
         arg = args[i]
-        if arg.endswith('-details'):
+        if arg.endswith('-details') or arg.endswith('-detail'):
             sample_detail_views = True
             if i+1 < len(args) and args[i+1].isdigit():
                 number = args[i+1]
@@ -148,7 +204,7 @@ if __name__ == "__main__":
     # Does the user ask for stats on subviews?
     for i in range(len(args)):
         arg = args[i]
-        if arg.endswith('-subviews'):
+        if arg.endswith('-subviews') or arg.endswith('-subview'):
             sample_sublist_views = True
             args.remove(arg)
             break
@@ -179,7 +235,8 @@ if __name__ == "__main__":
                 creds_file = arg
 
     # Run the analysis once
-    run_timer(creds_file)
+    run_timer(creds_file, sample_sublist_views,
+              sample_detail_views, detail_sample_size)
 
     end_time = time.time()
     print ''

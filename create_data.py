@@ -5,6 +5,7 @@ import random
 from copy import copy
 import time
 import yaml
+from utils import load_all_creds
 
 fake = Factory.create()
 debug = False
