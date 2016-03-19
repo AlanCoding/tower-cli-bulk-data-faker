@@ -62,3 +62,5 @@ target/
 .ipynb_checkpoints
 
 creds.yml
+
+output.txt

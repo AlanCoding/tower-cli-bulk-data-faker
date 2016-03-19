@@ -23,9 +23,10 @@ def parse_api_time(html, name):
     m = p.match(html)
     return m.group('time')
 
-def load_endpoint(suffix, creds):
+def load_endpoint(suffix, creds, soft_error=False):
     if suffix.startswith('/api/v1/'):
-        suffix = suffix.strip('/api/v1/')
+        # suffix = suffix.strip('/api/v1/')
+        suffix = suffix[8:]
     built_url = creds['host'].strip('/') + '/api/v1/' + suffix #+ '/?format=json'
     with warnings.catch_warnings():
         warnings.simplefilter(
@@ -36,6 +37,8 @@ def load_endpoint(suffix, creds):
             auth=(creds['username'], creds['password']), 
             verify=False)
     if r.status_code != 200:
+        if soft_error:
+            return r.status_code
         print 'Encountered an error getting a response'
         print '  status_code: ' + str(r.status_code)
         print '  response: ' + str(r.text)
@@ -65,8 +68,10 @@ def find_field_list(creds):
         ]
     return fields
 
-def get_endpoint_data(res, creds):
-    r = load_endpoint(res, creds)
+def get_endpoint_data(res, **kwargs):
+    r = load_endpoint(res, **kwargs)
+    if isinstance(r, int):
+        return (r, 0, 0, 0)
     # print ' response: ' + r.text
     if 'X-API-Time' in r.headers:
         api_time = r.headers.get('X-API-Time', None)
@@ -97,6 +102,7 @@ def tabulated_format(heading, *cells):
 
 def run_timer(creds_file, sample_sublist_views=False, 
               sample_detail_views=False, detail_sample_size=5):
+    error_dict = {}
     creds = read_creds(creds_file)
     stored_lists = {}
     fields = find_field_list(creds)
@@ -105,7 +111,7 @@ def run_timer(creds_file, sample_sublist_views=False,
     print '\njob_templates  '
     print tabulated_format('endpoint', 'time', 'query', 'queries')
     for res in fields:
-        r, api_time, qu_time, qu_count = get_endpoint_data(res, creds)
+        r, api_time, qu_time, qu_count = get_endpoint_data(res, creds=creds)
         print tabulated_format(res, api_time, qu_time, qu_count)
         r_json = yaml.load(r.text)
         if 'count' in r_json:
@@ -130,7 +136,7 @@ def run_timer(creds_file, sample_sublist_views=False,
                 res_id = random.choice(res_ids.keys())
                 # endpoint = res + '/' + str(res_id)
                 endpoint = res_ids[res_id]['url']
-                r, api_time, qu_time, qu_count = get_endpoint_data(endpoint, creds)
+                r, api_time, qu_time, qu_count = get_endpoint_data(endpoint, creds=creds)
                 at_float = float(api_time.strip('s'))
                 qt_float = float(qu_time.strip('s'))
                 at_total += at_float
@@ -148,7 +154,7 @@ def run_timer(creds_file, sample_sublist_views=False,
             res_dict = stored_lists[res]
             N = 1
             if len(res_dict) == 0:
-                print res.ljust(col_1) + 'no_records'
+                print '    ' + res.ljust(col_1) + 'no_records'
                 continue
             for i in range(N):
                 res_id = random.choice(res_dict.keys())
@@ -157,7 +163,15 @@ def run_timer(creds_file, sample_sublist_views=False,
                 print '\nrelated field load times for ' + str(res)
                 for relationship in related_dict:
                     endpoint = related_dict[relationship]
-                    r, api_time, qu_time, qu_count = get_endpoint_data(endpoint, creds)
+                    if not isinstance(endpoint, str):
+                        if len(endpoint) == 1:
+                            endpoint = endpoint[0]
+                        else:
+                            print '    error: bad endpoint type: ' + str(endpoint)
+                            continue
+                    r, api_time, qu_time, qu_count = get_endpoint_data(endpoint, creds=creds, soft_error=True)
+                    if isinstance(r, int):
+                        print '    error: ' + str(r)
                     print '    ' + tabulated_format(relationship, api_time, qu_time, qu_count)
 
 
