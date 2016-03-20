@@ -145,10 +145,12 @@ def create_pov_users(filename):
     cred_data = load_all_creds()
     towerhost = get_host_value()
     user_res = tower_cli.get_resource('user')
+    print 'POV users:'
+    for username in pov_data:
+        print ' - ' + str(username)
 
     for username in pov_data:
-        print '\nManaging Point-Of-View user ' + str(username)
-        print '  associations: ' + str(pov_data[username])
+        print '\n Managing Point-Of-View user ' + str(username)
         fake_data = fake_kwargs()
         user_data = dict((k, fake_data[k]) for k in res_fields['user'])
         user_data['username'] = username
@@ -171,19 +173,19 @@ def create_pov_users(filename):
         # Check existing user record, and leave existing fields alone
         try:
             user_obj = user_res.get(username=username)
-            for fd in user_data:
+            for fd in copy(user_data):
                 if fd in ('username', 'password'):
                     continue
-                if user_obj[fd] is not None:
+                if user_obj[fd] not in ('', None):
                     user_data.pop(fd)
         except:
             pass
         if len(user_data) > 2:
             # Create the user in Tower, or write over existing user
-            print '   modifying or creating user: ' + str(user_data)
+            print ('  user modify ' + ' '.join([str(k) + '=' + str(user_data[k])
+                for k in user_data]))
             user_obj = user_res.write(force_on_exists=True,
                 create_on_missing=True, fail_on_found=False, **user_data)
-        print '   user data: ' + str(dict((k, user_obj[k]) for k in res_fields['user'] if k in user_obj))
         
         for target in pov_data[username]:
             res_mod = tower_cli.get_resource(target)
@@ -201,8 +203,11 @@ def create_pov_users(filename):
                     N = N - N_existing
                     if N < 0:
                         N = 0
+                    print ('  found ' + str(N_existing) + ' of ' + target + 
+                           ' with ' + method_name + ' associations.' +
+                           ' Creating ' + str(N) + ' more.')
                     for j in range(N):
-                        target_pk = random.choice(targets_list)['id']
+                        target_pk = random.choice(targets_list.keys())
                         ref_mod_kwargs = {'user': user_obj['id'], target: target_pk}
                         print ('   ' + target + ' ' + method_name + ' ' + 
                                ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
@@ -219,14 +224,17 @@ def create_pov_users(filename):
                 N = N - N_existing
                 if N < 0:
                     N = 0
+                print ('  found ' + str(N_existing) + ' of ' + target + 
+                       ' with ' + method_name + ' associations.' +
+                       ' Creating ' + str(N) + ' more.')
                 for j in range(N):
-                    target_pk = random.choice(targets_list)['id']
-                    ref_mod_kwargs = {target: target_pk, 'user': user_obj['id']}
-                    print ('   ' + target + ' ' + method_name + ' ' + 
+                    target_pk = random.choice(targets_list.keys())
+                    ref_mod_kwargs = {target: target_pk}
+                    print ('   ' + target + ' ' + method_name + ' ' + str(target_pk) + ' ' +
                            ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
                            for k in ref_mod_kwargs]))
                     if not debug:
-                        assoc_method(**ref_mod_kwargs)
+                        assoc_method(target_pk, user=user_obj['id'])
 
 
 def quick_demo():
