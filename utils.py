@@ -1,5 +1,18 @@
 import os
 import yaml
+import sys
+import cStringIO
+
+from tower_cli.commands.config import echo_setting
+
+def get_host_value():
+    stdout_save = sys.stdout
+    stream = cStringIO.StringIO()
+    sys.stdout = stream
+    echo_setting('host')
+    sys.stdout = stdout_save
+    variable = stream.getvalue()
+    return variable[6:]
 
 def id_based_dict(resp_json):
     return_dict = {}

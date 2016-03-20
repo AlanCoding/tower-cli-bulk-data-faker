@@ -1,14 +1,12 @@
 admin:
   organization:
-    associate: 56
-  credential:
-    own: 5
+    associate: 5
+  credential: 5
 victor:
   organization:
-    associate: 60
-    associate_admin: 24
-  credential:
-    own: 2
+    associate: 6
+    associate_admin: 7
+  credential: 5
 selene:
   organization:
     associate: 2

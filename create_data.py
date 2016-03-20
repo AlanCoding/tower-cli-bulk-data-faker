@@ -5,7 +5,8 @@ import random
 from copy import copy
 import time
 import yaml
-from utils import load_all_creds
+import os
+from utils import load_all_creds, get_host_value, id_based_dict
 
 fake = Factory.create()
 debug = False
@@ -66,7 +67,7 @@ res_assoc = {
     }
 }
 
-def fake_kwargs(n):
+def fake_kwargs(n=0):
     kwargs = {}
     prefix = '_' + str(n) + '_'
     kwargs['username'] = fake.user_name()
@@ -133,10 +134,100 @@ def create_resource_data(res):
                         target_pk = random.choice(targets_list)['id']
                         ref_mod_kwargs = {res: r['id'], target: target_pk}
                         print ('   ' + target + ' ' + method_name + ' ' + 
-                               ' '.join([str(k) + '=' + str(ref_mod_kwargs[k]) 
+                               ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
                                for k in ref_mod_kwargs]))
                         if not debug:
                             assoc_method(**ref_mod_kwargs)
+
+def create_pov_users(filename):
+    with open(filename, 'r') as f:
+        pov_data = yaml.load(f.read())
+    cred_data = load_all_creds()
+    towerhost = get_host_value()
+    user_res = tower_cli.get_resource('user')
+
+    for username in pov_data:
+        print '\nManaging Point-Of-View user ' + str(username)
+        print '  associations: ' + str(pov_data[username])
+        fake_data = fake_kwargs()
+        user_data = dict((k, fake_data[k]) for k in res_fields['user'])
+        user_data['username'] = username
+
+        if username in cred_data:
+            user_data['password'] = cred_data[username]['password']
+        else:
+            # Save new credential file for user
+            new_filepath = 'creds/' + username + '_creds.yml'
+            if os.path.isfile(new_filepath):
+                print 'ERROR: credential for ' + username + ' does not exist'
+                print '  but a filename for that user does'
+                raise Exception()
+            with open(new_filepath, 'w') as f:
+                f.write(yaml.dump({
+                    'host': towerhost, 'username': username,
+                    'password': user_data['password']
+                }, default_flow_style=False))
+
+        # Check existing user record, and leave existing fields alone
+        try:
+            user_obj = user_res.get(username=username)
+            for fd in user_data:
+                if fd in ('username', 'password'):
+                    continue
+                if user_obj[fd] is not None:
+                    user_data.pop(fd)
+        except:
+            pass
+        if len(user_data) > 2:
+            # Create the user in Tower, or write over existing user
+            print '   modifying or creating user: ' + str(user_data)
+            user_obj = user_res.write(force_on_exists=True,
+                create_on_missing=True, fail_on_found=False, **user_data)
+        print '   user data: ' + str(dict((k, user_obj[k]) for k in res_fields['user'] if k in user_obj))
+        
+        for target in pov_data[username]:
+            res_mod = tower_cli.get_resource(target)
+            targets_list = id_based_dict(res_mod.list(all_pages=True))
+            if len(targets_list) == 0:
+                print 'PROBLEM: no ' + str(target) + ' resources to add to'
+                print '  the user. This will probably cause a problem.'
+            if isinstance(pov_data[username][target], dict):
+                for method_name in pov_data[username][target]:
+                    assoc_method = getattr(res_mod, method_name)
+                    N = pov_data[username][target][method_name]
+                    # Subtract the number already owned by the user
+                    N_existing = res_mod.list(
+                        query=[('users__in', user_obj['id'])])['count']
+                    N = N - N_existing
+                    if N < 0:
+                        N = 0
+                    for j in range(N):
+                        target_pk = random.choice(targets_list)['id']
+                        ref_mod_kwargs = {'user': user_obj['id'], target: target_pk}
+                        print ('   ' + target + ' ' + method_name + ' ' + 
+                               ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
+                               for k in ref_mod_kwargs]))
+                        if not debug:
+                            assoc_method(**ref_mod_kwargs)
+            else:
+                method_name = 'modify'
+                assoc_method = getattr(res_mod, method_name)
+                N = pov_data[username][target]
+                # Subtract the number already associated with the user
+                N_existing = res_mod.list(
+                    query=[('user__in', user_obj['id'])])['count']
+                N = N - N_existing
+                if N < 0:
+                    N = 0
+                for j in range(N):
+                    target_pk = random.choice(targets_list)['id']
+                    ref_mod_kwargs = {target: target_pk, 'user': user_obj['id']}
+                    print ('   ' + target + ' ' + method_name + ' ' + 
+                           ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
+                           for k in ref_mod_kwargs]))
+                    if not debug:
+                        assoc_method(**ref_mod_kwargs)
+
 
 def quick_demo():
     for res in res_list:
@@ -172,13 +263,15 @@ if __name__ == "__main__":
         for res in res_list_reference:
             print '  ' + res + ': ' + str(get_count(res))
     elif len(sys.argv) > 1:
-        if sys.argv[-1] == 'debug':
+        args = copy(sys.argv)
+        if args[-1].endswith('debug'):
             debug = True
-        elif sys.argv[1].endswith('.yml') or sys.argv[1] == 'all':
-            if sys.argv[1] == 'all':
+            args.remove(args[-1])
+        if args[1].endswith('.yml') or args[1] == 'all':
+            if args[1] == 'all':
                 filename = 'run_data.yml'
             else:
-                filename = sys.argv[1]
+                filename = args[1]
             with open(filename, 'r') as f:
                 filetext = f.read()
             Nres = yaml.load(filetext)
@@ -187,11 +280,16 @@ if __name__ == "__main__":
                 if res in res_list:
                     print '\n ----- ' + res + ' ----- '
                     create_resource_data(res)
-        elif sys.argv[1] in res_list_reference:
-            res = sys.argv[1]
-            if len(sys.argv) > 2 and sys.argv[2].isdigit():
-                Nres[res] = int(sys.argv[2])
+        elif args[1] in res_list_reference:
+            res = args[1]
+            if len(args) > 2 and args[2].isdigit():
+                Nres[res] = int(args[2])
             create_resource_data(res)
+        elif args[1] == 'pov':
+            pov_filename = 'pov_users.yml'
+            if len(args) > 2 and args[2].endswith('.yml'):
+                pov_filename = args[2]
+            create_pov_users(pov_filename)
         else:
             print 'Command not understood'
     end_time = time.time()
