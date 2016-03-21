@@ -34,7 +34,7 @@ res_fields = {
     'user': ['username', 'password', 'email', 'first_name', 'last_name'],
     'inventory': ['name', 'description', 'organization'],
     'host': ['name', 'inventory'],
-    'credential': ['name', 'description', 'username', 'password', 'team', ],
+    'credential': ['name', 'description', 'username', 'password', 'user', ],
     'job_template': ['name', 'credential', 'description', 'inventory', 'project']
 }
 res_extras = {
@@ -193,6 +193,7 @@ def create_pov_users(filename):
             if len(targets_list) == 0:
                 print 'PROBLEM: no ' + str(target) + ' resources to add to'
                 print '  the user. This will probably cause a problem.'
+                continue
             if isinstance(pov_data[username][target], dict):
                 for method_name in pov_data[username][target]:
                     assoc_method = getattr(res_mod, method_name)
@@ -229,13 +230,36 @@ def create_pov_users(filename):
                        ' Creating ' + str(N) + ' more.')
                 for j in range(N):
                     target_pk = random.choice(targets_list.keys())
-                    ref_mod_kwargs = {target: target_pk}
+                    ref_mod_kwargs = {'user': user_obj['id']}
+                    # Special case where we have to de-associate team
+                    if target == 'credential':
+                        ref_mod_kwargs['team'] = None
                     print ('   ' + target + ' ' + method_name + ' ' + str(target_pk) + ' ' +
                            ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
                            for k in ref_mod_kwargs]))
                     if not debug:
-                        assoc_method(target_pk, user=user_obj['id'])
+                        assoc_method(target_pk, **ref_mod_kwargs)
 
+def destroy(res):
+    res_mod = tower_cli.get_resource(res)
+    targets_list = id_based_dict(res_mod.list(all_pages=True))
+    if res == 'user':
+        cred_data = load_all_creds()
+        cred_ids = []
+        for username in cred_data.keys():
+            try:
+                user_obj = res_mod.get(username=username)
+                cred_ids.append(user_obj['id'])
+            except:
+                pass
+        print '  excluding special users: ' + ' '.join(cred_data.keys())
+    for pk in targets_list.keys():
+        # Don't delete the users used to log in with in the first place
+        if res == 'user' and pk in cred_ids:
+            continue
+        print ' ' + res + ' delete ' + str(pk)
+        if not debug:
+            res_mod.delete(pk)
 
 def quick_demo():
     for res in res_list:
@@ -298,6 +322,13 @@ if __name__ == "__main__":
             if len(args) > 2 and args[2].endswith('.yml'):
                 pov_filename = args[2]
             create_pov_users(pov_filename)
+        elif args[1] == 'destroy':
+            if args[2] == 'all':
+                for res in res_list_reference:
+                    print '\nDestroying all ' + res + ' resources.'
+                    destroy(res)
+            else:
+                destroy(args[2])
         else:
             print 'Command not understood'
     end_time = time.time()
