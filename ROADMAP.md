@@ -11,8 +11,12 @@
    - credentials
    - teams
    - job templates
+     - Leverage Galaxy to provide data to do this with?
+ - A command to migrate local credentials to Tower
+ - A command to migrate local Ansible host files to Tower 
 
 ## Packaging and Collaboration
 
  - Travis tests
  - PiPy package
+   - Probably as a separate package (too dangerous for tower-cli inclusion)

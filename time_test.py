@@ -59,7 +59,7 @@ def read_creds(filename):
 def find_field_list(creds):
     try:
         r = load_json('', creds)
-        fields = [v[8:].strip('/') for v in r.values() if 'authtoken' not in v]
+        fields = [v[8:].strip('/') for v in r.values() if 'authtoken' not in v and 'system_job' not in v]
     except:
         print 'NOTICE: failed to load JSON response from server'
         fields = [
@@ -175,13 +175,23 @@ def run_timer(creds_file, sample_sublist_views=False,
                     print '    ' + tabulated_format(relationship, api_time, qu_time, qu_count)
 
 
-def pov_run(username):
-    user_res = tower_cli.get_resource('user')
-    user_data = user_res.get(username=username)
-    run_timer()
+def pov_run(sample_sublist_views, 
+            sample_detail_views, detail_sample_size):
+    # user_res = tower_cli.get_resource('user')
+    # user_data = user_res.get(username=username)
+    import os
+    filelist = os.listdir('creds/')
+    for filename in filelist:
+        if 'gitignore' in filename:
+            continue
+        print '\n------running user batch----'
+        print '  filename: ' + filename + '\n'
+        run_timer('creds/' + filename, sample_sublist_views, 
+                  sample_detail_views, detail_sample_size)
 
 
-def multiple_pov_run(pov_file):
+def multiple_pov_run(pov_file, sample_sublist_views, 
+            sample_detail_views, detail_sample_size):
     with open(pov_file, 'r') as f:
         pov_dict = yaml.load(f.read())
     for username in pov_dict:
@@ -224,22 +234,23 @@ if __name__ == "__main__":
             break
 
     # Does the user want this run for each user in the POV file?
-    for i in range(len(args)):
-        arg = args[i]
-        if arg.endswith('pov'):
-            if i+1 < len(args):
-                multiple_pov_run('pov_users.yml')
-            elif is_this_file_yaml(args[i+1]):
-                multiple_pov_run(args[i+1])
-            else:
-                pov_run(args[i+1])
+    # for i in range(len(args)):
+    #     arg = args[i]
+    #     if arg.endswith('pov'):
+    #         if i+1 <= len(args):
+    #             multiple_pov_run('pov_users.yml')
+    #         elif is_this_file_yaml(args[i+1]):
+    #             multiple_pov_run(args[i+1])
+    #         else:
+    #             pov_run(args[i+1])
     if any([arg.endswith('pov') for arg in args]):
-        pov_file = 'pov_users.yml'
-        for arg in args:
-            if is_this_file_yaml(arg):
-                pov_file = arg
+        # pov_file = 'pov_users.yml'
+        # for arg in args:
+        #     if is_this_file_yaml(arg):
+        #         pov_file = arg
         # Run the analysis for the POV users
-        pov_run(pov_file)
+        pov_run(sample_sublist_views,
+                  sample_detail_views, detail_sample_size)
 
     # Is a credential file specifically specified?
     creds_file = 'creds.yml'
