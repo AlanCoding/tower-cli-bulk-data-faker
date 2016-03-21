@@ -251,6 +251,7 @@ if __name__ == "__main__":
         # Run the analysis for the POV users
         pov_run(sample_sublist_views,
                   sample_detail_views, detail_sample_size)
+        return
 
     # Is a credential file specifically specified?
     creds_file = 'creds.yml'

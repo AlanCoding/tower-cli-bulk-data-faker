@@ -17,6 +17,7 @@
 
 ## Packaging and Collaboration
 
+ - Command line packaging
  - Travis tests
  - PiPy package
    - Probably as a separate package (too dangerous for tower-cli inclusion)
