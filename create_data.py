@@ -30,7 +30,8 @@ Nres = {}
 res_fields = {
     'organization': ['name', 'description'],
     'team': ['name', 'description', 'organization'],
-    'project': ['name', 'description', 'organization'],
+    # 'project': ['name', 'description', 'organization'],
+    'project': ['name', 'description'],
     'user': ['username', 'password', 'email', 'first_name', 'last_name'],
     'inventory': ['name', 'description', 'organization'],
     'host': ['name', 'inventory'],
@@ -85,6 +86,7 @@ def fake_kwargs(n=0):
 def create_resource_data(res):
     fields = copy(res_fields[res])
     # Prefetch lists with relationships to the resource
+    pk_fields = []
     ref_lists = {}
     for fd in copy(fields):
         if fd in res_list_reference:
@@ -94,6 +96,7 @@ def create_resource_data(res):
                 list_kwargs['kind'] = 'ssh'
             ref_lists[fd] = ref_mod.list(**list_kwargs)['results']
             fields.remove(fd)
+            pk_fields.append(fd)
     if res in res_assoc:
         for fd in res_assoc[res]:
             if fd not in ref_lists:
@@ -101,6 +104,7 @@ def create_resource_data(res):
                 ref_lists[fd] = ref_mod.list(all_pages=True)['results']
     # Command to create the resource
     res_mod = tower_cli.get_resource(res)
+    start_time = time.time()
     for i in range(Nres[res]):
         std_kwargs = fake_kwargs(i)
         kwargs = {}
@@ -108,17 +112,22 @@ def create_resource_data(res):
             kwargs[fd] = std_kwargs[fd]
         if res in res_extras:
             kwargs.update(res_extras[res])
-        for fd in ref_lists:
+        for fd in pk_fields:
             if len(ref_lists[fd]) == 0:
                 print ('ERROR: one of the specified reference fields has no\n'
                        'existing records to associate with.')
             kwargs[fd] = random.choice(ref_lists[fd])['id']
+        
         print ' ' + res + ' ' + ' '.join([str(k) + '=' + str(kwargs[k]) for k in kwargs])
         if not debug:
             r = res_mod.create(**kwargs)
             print '   created, pk= ' + str(r['id'])
         else:
-            r = random.choice(res_mod.list()['results'])
+            r_list = res_mod.list()['results']
+            if len(r_list) == 0:
+                r = {'id': 1}
+            else:
+                r = random.choice(r_list)
         # Post-creation associations
         if res in res_assoc:
             for target in res_assoc[res]:
@@ -138,6 +147,8 @@ def create_resource_data(res):
                                for k in ref_mod_kwargs]))
                         if not debug:
                             assoc_method(**ref_mod_kwargs)
+    end_time = time.time()
+    print '\n time taken for ' + str(res) + ' creation per item: ' + str((end_time - start_time)/Nres[res])
 
 def create_pov_users(filename):
     with open(filename, 'r') as f:
@@ -152,22 +163,23 @@ def create_pov_users(filename):
     for username in pov_data:
         print '\n Managing Point-Of-View user ' + str(username)
         fake_data = fake_kwargs()
-        user_data = dict((k, fake_data[k]) for k in res_fields['user'])
+        user_data = dict((k, fake_data[k]) for k in res_fields['user'] if k in fake_data)
         user_data['username'] = username
 
         if username in cred_data:
             user_data['password'] = cred_data[username]['password']
-        else:
-            # Save new credential file for user
+
+        if username not in cred_data or str(cred_data[username]['host']) != str(towerhost):
+            # Create new account data for user
             new_filepath = 'creds/' + username + '_creds.yml'
-            if os.path.isfile(new_filepath):
+            if os.path.isfile(new_filepath) and username not in cred_data:
                 print 'ERROR: credential for ' + username + ' does not exist'
                 print '  but a filename for that user does'
                 raise Exception()
             with open(new_filepath, 'w') as f:
                 f.write(yaml.dump({
-                    'host': towerhost, 'username': username,
-                    'password': user_data['password']
+                    'host': towerhost, 'username': str(username),
+                    'password': str(user_data['password'])
                 }, default_flow_style=False))
 
         # Check existing user record, and leave existing fields alone
@@ -186,7 +198,9 @@ def create_pov_users(filename):
                 for k in user_data]))
             user_obj = user_res.write(force_on_exists=True,
                 create_on_missing=True, fail_on_found=False, **user_data)
-        
+
+        if pov_data[username] is None:
+            continue
         for target in pov_data[username]:
             res_mod = tower_cli.get_resource(target)
             targets_list = id_based_dict(res_mod.list(all_pages=True))
@@ -199,8 +213,20 @@ def create_pov_users(filename):
                     assoc_method = getattr(res_mod, method_name)
                     N = pov_data[username][target][method_name]
                     # Subtract the number already owned by the user
-                    N_existing = res_mod.list(
-                        query=[('users__in', user_obj['id'])])['count']
+                    if 'admin' in method_name:
+                        try:
+                            N_existing = res_mod.list(
+                                query=[('admins__in', user_obj['id'])])['count']
+                        except:
+                            N_existing = res_mod.list(
+                                query=[('admin_role__members__in', user_obj['id'])])['count']
+                    else:
+                        try:
+                            N_existing = res_mod.list(
+                                query=[('users__in', user_obj['id'])])['count']
+                        except:
+                            N_existing = res_mod.list(
+                                query=[('member_role__members__in', user_obj['id'])])['count']
                     N = N - N_existing
                     if N < 0:
                         N = 0
@@ -262,11 +288,11 @@ def destroy(res):
             res_mod.delete(pk)
 
 def quick_demo():
+    debug = True
     for res in res_list:
         Nres[res] = 3
         print ''
         print ' ----- ' + res + ' ----- '
-        debug = True
         create_resource_data(res)
 
 def get_count(res):
@@ -274,10 +300,19 @@ def get_count(res):
     r = res_mod.list()
     return r['count']
 
+def finish(start_time):
+    end_time = time.time()
+    print ''
+    print ' total time taken: ' + str(end_time - start_time) + ' seconds'
+    sys.exit(0)
+
 
 if __name__ == "__main__":
     start_time = time.time()
-    if len(sys.argv) == 1:
+    args = copy(sys.argv)
+
+    # Special information commands
+    if len(sys.argv) <= 1:
         print '\n  Usage patterns:'
         print 'python create_data.py <resource> <count>\n'
         print 'python create_data.py <command> <flags>\n'
@@ -288,49 +323,53 @@ if __name__ == "__main__":
         print '   - all:    create all data in the definition file'
         print '   - demo:   show what data would be created by all command'
         print '   - counts: echo number of things in Tower already'
-    elif sys.argv[1] == 'demo':
+        sys.exit(0)
+    if sys.argv[1] == 'demo':
         quick_demo()
-    elif sys.argv[1] == 'counts':
+        sys.exit(0)
+    if sys.argv[1] == 'counts':
         print '\n  Running resource counts:'
         for res in res_list_reference:
             print '  ' + res + ': ' + str(get_count(res))
-    elif len(sys.argv) > 1:
-        args = copy(sys.argv)
-        if args[-1].endswith('debug'):
-            debug = True
-            args.remove(args[-1])
-        if args[1].endswith('.yml') or args[1] == 'all':
-            if args[1] == 'all':
-                filename = 'run_data.yml'
-            else:
-                filename = args[1]
-            with open(filename, 'r') as f:
-                filetext = f.read()
-            Nres = yaml.load(filetext)
-            res_list = Nres.keys()
-            for res in res_list_reference:
-                if res in res_list:
-                    print '\n ----- ' + res + ' ----- '
-                    create_resource_data(res)
-        elif args[1] in res_list_reference:
-            res = args[1]
-            if len(args) > 2 and args[2].isdigit():
-                Nres[res] = int(args[2])
-            create_resource_data(res)
-        elif args[1] == 'pov':
-            pov_filename = 'pov_users.yml'
-            if len(args) > 2 and args[2].endswith('.yml'):
-                pov_filename = args[2]
-            create_pov_users(pov_filename)
-        elif args[1] == 'destroy':
-            if args[2] == 'all':
-                for res in res_list_reference:
-                    print '\nDestroying all ' + res + ' resources.'
-                    destroy(res)
-            else:
-                destroy(args[2])
+        finish(start_time)
+
+    # Process options
+    if args[-1].endswith('debug'):
+        debug = True
+        args.remove(args[-1])
+
+    # Normal create commands
+    if args[1].endswith('.yml') or args[1] == 'all':
+        if args[1] == 'all':
+            filename = 'run_data.yml'
         else:
-            print 'Command not understood'
-    end_time = time.time()
-    print ''
-    print ' total time taken: ' + str(end_time - start_time) + ' seconds'
+            filename = args[1]
+        with open(filename, 'r') as f:
+            filetext = f.read()
+        Nres = yaml.load(filetext)
+        res_list = Nres.keys()
+        for res in res_list_reference:
+            if res in res_list:
+                print '\n ----- ' + res + ' ----- '
+                create_resource_data(res)
+    elif args[1] in res_list_reference:
+        res = args[1]
+        if len(args) > 2 and args[2].isdigit():
+            Nres[res] = int(args[2])
+        create_resource_data(res)
+    elif args[1] == 'pov':
+        pov_filename = 'pov_users.yml'
+        if len(args) > 2 and args[2].endswith('.yml'):
+            pov_filename = args[2]
+        create_pov_users(pov_filename)
+    elif args[1] == 'destroy':
+        if args[2] == 'all':
+            for res in res_list_reference:
+                print '\nDestroying all ' + res + ' resources.'
+                destroy(res)
+        else:
+            destroy(args[2])
+    else:
+        print 'Command not understood'
+
+    finish(start_time)

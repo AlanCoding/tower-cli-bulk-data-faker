@@ -40,8 +40,8 @@ def load_endpoint(suffix, creds, soft_error=False):
         if soft_error:
             return r.status_code
         print 'Encountered an error getting a response'
+        print '  response: ' + str(r.text[:50])
         print '  status_code: ' + str(r.status_code)
-        print '  response: ' + str(r.text)
         print '  url: ' + built_url
         raise Exception()
     return r
@@ -108,14 +108,16 @@ def run_timer(creds_file, sample_sublist_views=False,
     fields = find_field_list(creds)
     print '\nTable of API response times:'
     print '\n top-level list view results'
-    print '\njob_templates  '
     print tabulated_format('endpoint', 'time', 'query', 'queries')
     for res in fields:
-        r, api_time, qu_time, qu_count = get_endpoint_data(res, creds=creds)
-        print tabulated_format(res, api_time, qu_time, qu_count)
-        r_json = yaml.load(r.text)
-        if 'count' in r_json:
-            stored_lists[res] = id_based_dict(r_json)
+        r, api_time, qu_time, qu_count = get_endpoint_data(res, creds=creds, soft_error=True)
+        if isinstance(r, int):
+            print res.ljust(col_1) + 'error status_code: ' + str(r)
+        else:
+            print tabulated_format(res, api_time, qu_time, qu_count)
+            r_json = yaml.load(r.text)
+            if 'count' in r_json:
+                stored_lists[res] = id_based_dict(r_json)
     print ''
 
     if sample_detail_views:
@@ -138,7 +140,11 @@ def run_timer(creds_file, sample_sublist_views=False,
                 endpoint = res_ids[res_id]['url']
                 r, api_time, qu_time, qu_count = get_endpoint_data(endpoint, creds=creds)
                 at_float = float(api_time.strip('s'))
-                qt_float = float(qu_time.strip('s'))
+                if qu_time is None:
+                    qt_float = 0.0
+                    qu_count = 0
+                else:
+                    qt_float = float(qu_time.strip('s'))
                 at_total += at_float
                 qt_total += qt_float
                 qu_total += int(qu_count)
@@ -147,10 +153,11 @@ def run_timer(creds_file, sample_sublist_views=False,
 
     if sample_sublist_views:
         print '\n sublist view results'
-        print '    ' + tabulated_format('endpoint', 'time', 'query', 'queries')
         for res in fields:
             if res not in stored_lists:
                 continue
+            print '\nrelated field load times for ' + str(res)
+            print '    ' + tabulated_format('endpoint', 'time', 'query', 'queries')
             res_dict = stored_lists[res]
             N = 1
             if len(res_dict) == 0:
@@ -160,7 +167,6 @@ def run_timer(creds_file, sample_sublist_views=False,
                 res_id = random.choice(res_dict.keys())
                 item_dict = res_dict[res_id]
                 related_dict = item_dict['related']
-                print '\nrelated field load times for ' + str(res)
                 for relationship in related_dict:
                     endpoint = related_dict[relationship]
                     if not isinstance(endpoint, str):
@@ -171,8 +177,9 @@ def run_timer(creds_file, sample_sublist_views=False,
                             continue
                     r, api_time, qu_time, qu_count = get_endpoint_data(endpoint, creds=creds, soft_error=True)
                     if isinstance(r, int):
-                        print '    error: ' + str(r)
-                    print '    ' + tabulated_format(relationship, api_time, qu_time, qu_count)
+                        print '    ' + relationship.ljust(col_1) + 'error: ' + str(r)
+                    else:
+                        print '    ' + tabulated_format(relationship, api_time, qu_time, qu_count)
 
 
 def pov_run(sample_sublist_views, 
@@ -251,18 +258,18 @@ if __name__ == "__main__":
         # Run the analysis for the POV users
         pov_run(sample_sublist_views,
                   sample_detail_views, detail_sample_size)
-        return
+    else:
 
-    # Is a credential file specifically specified?
-    creds_file = 'creds.yml'
-    if any([is_this_file_yaml(arg) for arg in args]):
-        for arg in args:
-            if is_this_file_yaml(arg):
-                creds_file = arg
+        # Is a credential file specifically specified?
+        creds_file = 'creds.yml'
+        if any([arg.endswith('.yml') or arg.endswith('.yaml') for arg in args]):
+            for arg in args:
+                if arg.endswith('.yml') or arg.endswith('.yaml'):
+                    creds_file = arg
 
-    # Run the analysis once
-    run_timer(creds_file, sample_sublist_views,
-              sample_detail_views, detail_sample_size)
+        # Run the analysis once
+        run_timer(creds_file, sample_sublist_views,
+                  sample_detail_views, detail_sample_size)
 
     end_time = time.time()
     print ''

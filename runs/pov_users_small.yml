@@ -1,0 +1,15 @@
+admin:
+  organization:
+    associate: 2
+  credential: 2
+victor:
+  organization:
+    associate: 2
+    associate_admin: 3
+  credential: 1
+selene:
+  organization:
+    associate: 1
+  team:
+    associate: 1
+noorguser:

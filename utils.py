@@ -5,6 +5,17 @@ import cStringIO
 
 from tower_cli.commands.config import echo_setting
 
+def get_tower_cli_config(key):
+    stdout_save = sys.stdout
+    stream = cStringIO.StringIO()
+    sys.stdout = stream
+    echo_setting(key)
+    sys.stdout = stdout_save
+    printed_str = stream.getvalue()
+    return_str = printed_str.strip('\n')
+    return_str = return_str[return_str.index(':')+1:]
+    return return_str
+
 def get_host_value():
     stdout_save = sys.stdout
     stream = cStringIO.StringIO()
@@ -12,7 +23,13 @@ def get_host_value():
     echo_setting('host')
     sys.stdout = stdout_save
     variable = stream.getvalue()
-    return variable[6:]
+    return variable[6:].strip('\n')
+
+def tower_cli_creds():
+    cred_dict = {}
+    for key in ('username', 'password', 'host'):
+        cred_dict[key] = get_tower_cli_config(key)
+    return cred_dict
 
 def id_based_dict(resp_json):
     return_dict = {}
