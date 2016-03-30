@@ -2,8 +2,27 @@ import os
 import yaml
 import sys
 import cStringIO
+from datetime import datetime
 
 from tower_cli.commands.config import echo_setting
+
+def tower_version():
+    from tower_cli.api import client
+    return str(client.get('/config/').json()['version'])
+
+def unique_marker():
+    now = datetime.now()
+    ret_str = str(now.year)
+    int_list = [now.month, now.day, now.hour]
+    # coerce into 2 character number
+    for thing in int_list:
+        ret_str += '_'
+        if len(str(thing)) == 1:
+            ret_str += '0' + str(thing)
+        else:
+            ret_str += str(thing)
+    ret_str += '_' + tower_version()
+    return ret_str
 
 def get_tower_cli_config(key):
     stdout_save = sys.stdout

@@ -1,15 +1,15 @@
 admin:
   organization:
-    associate: 5
+    associate: 10%
   # credential: 5
 victor:
   organization:
-    associate: 6
-    associate_admin: 7
+    associate: 40%
+    associate_admin: 70%
   # credential: 5
 selene:
   organization:
-    associate: 29
+    associate: 40%
   team:
-    associate: 35
+    associate: 30%
 noorguser:

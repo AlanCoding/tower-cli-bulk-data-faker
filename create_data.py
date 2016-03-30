@@ -7,9 +7,11 @@ import time
 import yaml
 import os
 from utils import load_all_creds, get_host_value, id_based_dict
+from utils import unique_marker
 
 fake = Factory.create()
 debug = False
+silent = False
 
 res_list_reference = [
     'organization', 'team', 'project', 'user', 'inventory', 'host',
@@ -22,6 +24,7 @@ res_list = res_list_reference
 # Not developed yet:
 #  group
 #  job
+#  permissions
 #  notifications
 
 # Global variable for number to create
@@ -30,8 +33,7 @@ Nres = {}
 res_fields = {
     'organization': ['name', 'description'],
     'team': ['name', 'description', 'organization'],
-    # 'project': ['name', 'description', 'organization'],
-    'project': ['name', 'description'],
+    'project': ['name', 'description', 'organization'],
     'user': ['username', 'password', 'email', 'first_name', 'last_name'],
     'inventory': ['name', 'description', 'organization'],
     'host': ['name', 'inventory'],
@@ -68,11 +70,22 @@ res_assoc = {
     }
 }
 
-def fake_kwargs(n=0):
+def fake_kwargs(n=0, kind=None):
     kwargs = {}
     prefix = '_' + str(n) + '_'
     kwargs['username'] = fake.user_name()
-    kwargs['name'] = fake.company()  # .replace(' ', '-')
+    if kind == 'host':
+        if random.random() > 0.5:
+            hostname = fake.url()
+            if hostname.startswith('http://'):
+                hostname = hostname[7:]
+            elif hostname.startswith('https://'):
+                hostname = hostname[8:]
+            kwargs['name'] = hostname
+        else:
+            kwargs['name'] = fake.ipv4()
+    else:
+        kwargs['name'] = fake.company()  # .replace(' ', '-')
     # Attach an in integer on the names in sequence
     # for key in kwargs:
     #     kwargs[key] = prefix + kwargs[key]
@@ -106,7 +119,7 @@ def create_resource_data(res):
     res_mod = tower_cli.get_resource(res)
     start_time = time.time()
     for i in range(Nres[res]):
-        std_kwargs = fake_kwargs(i)
+        std_kwargs = fake_kwargs(i, kind=res)
         kwargs = {}
         for fd in fields:
             kwargs[fd] = std_kwargs[fd]
@@ -117,11 +130,15 @@ def create_resource_data(res):
                 print ('ERROR: one of the specified reference fields has no\n'
                        'existing records to associate with.')
             kwargs[fd] = random.choice(ref_lists[fd])['id']
-        
-        print ' ' + res + ' ' + ' '.join([str(k) + '=' + str(kwargs[k]) for k in kwargs])
+        if res == 'project' and i == Nres[res]:
+            # Avoid race condition where playbook list is unknown
+            kwargs['monitor'] = True
+        if not silent:
+            print ' ' + res + ' ' + ' '.join([str(k) + '=' + str(kwargs[k]) for k in kwargs])
         if not debug:
             r = res_mod.create(**kwargs)
-            print '   created, pk= ' + str(r['id'])
+            if not silent:
+                print '   created, pk= ' + str(r['id'])
         else:
             r_list = res_mod.list()['results']
             if len(r_list) == 0:
@@ -142,9 +159,10 @@ def create_resource_data(res):
                     for j in range(N):
                         target_pk = random.choice(targets_list)['id']
                         ref_mod_kwargs = {res: r['id'], target: target_pk}
-                        print ('   ' + target + ' ' + method_name + ' ' + 
-                               ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
-                               for k in ref_mod_kwargs]))
+                        if not silent:
+                            print ('   ' + target + ' ' + method_name + ' ' + 
+                                   ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
+                                   for k in ref_mod_kwargs]))
                         if not debug:
                             assoc_method(**ref_mod_kwargs)
     end_time = time.time()
@@ -162,7 +180,7 @@ def create_pov_users(filename):
 
     for username in pov_data:
         print '\n Managing Point-Of-View user ' + str(username)
-        fake_data = fake_kwargs()
+        fake_data = fake_kwargs(kind='user')
         user_data = dict((k, fake_data[k]) for k in res_fields['user'] if k in fake_data)
         user_data['username'] = username
 
@@ -212,6 +230,12 @@ def create_pov_users(filename):
                 for method_name in pov_data[username][target]:
                     assoc_method = getattr(res_mod, method_name)
                     N = pov_data[username][target][method_name]
+                    # Allow use of percentages
+                    if isinstance(N, str):
+                        if not N.endswith('%'):
+                            raise Exception("Failed to read number of associations")
+                        N_total = res_mod.list()['count']
+                        N = int(N_total*float(N[:-1]) / 100.0)
                     # Subtract the number already owned by the user
                     if 'admin' in method_name:
                         try:
@@ -236,9 +260,10 @@ def create_pov_users(filename):
                     for j in range(N):
                         target_pk = random.choice(targets_list.keys())
                         ref_mod_kwargs = {'user': user_obj['id'], target: target_pk}
-                        print ('   ' + target + ' ' + method_name + ' ' + 
-                               ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
-                               for k in ref_mod_kwargs]))
+                        if not silent:
+                            print ('   ' + target + ' ' + method_name + ' ' + 
+                                   ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
+                                   for k in ref_mod_kwargs]))
                         if not debug:
                             assoc_method(**ref_mod_kwargs)
             else:
@@ -260,9 +285,10 @@ def create_pov_users(filename):
                     # Special case where we have to de-associate team
                     if target == 'credential':
                         ref_mod_kwargs['team'] = None
-                    print ('   ' + target + ' ' + method_name + ' ' + str(target_pk) + ' ' +
-                           ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
-                           for k in ref_mod_kwargs]))
+                    if not silent:
+                        print ('   ' + target + ' ' + method_name + ' ' + str(target_pk) + ' ' +
+                               ' '.join([str(k) + '=' + str(ref_mod_kwargs[k])
+                               for k in ref_mod_kwargs]))
                     if not debug:
                         assoc_method(target_pk, **ref_mod_kwargs)
 
@@ -334,9 +360,16 @@ if __name__ == "__main__":
         finish(start_time)
 
     # Process options
-    if args[-1].endswith('debug'):
-        debug = True
-        args.remove(args[-1])
+    for arg in copy(args):
+        if arg.startswith('-'):
+            option_name = arg.strip('-')
+            if option_name == 'debug':
+                debug = True
+            elif option_name == 'silent':
+                silent = True
+            else:
+                raise Exception("option " + arg + " not understood.")
+            args.remove(arg)
 
     # Normal create commands
     if args[1].endswith('.yml') or args[1] == 'all':
@@ -369,6 +402,9 @@ if __name__ == "__main__":
                 destroy(res)
         else:
             destroy(args[2])
+    elif args[1] == 'version':
+        print unique_marker()
+        sys.exit(0)
     else:
         print 'Command not understood'
 

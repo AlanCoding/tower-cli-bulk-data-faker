@@ -6,10 +6,12 @@
    - POV user definition can specify `associate with 50% of organizations`
  - Point-Of-View teams
    - this needs to link to a Point-Of-View user in order to stress RBAC correctly
- - Store statistics on resource creation
+ - Output aggregation
+   - Output separate summary file from data creation
+   - Statistics on resource creation
+   - Include version information somewhere
  - Smarter fake data creator, giving convincing names for
    - projects
-   - hosts
    - credentials
    - teams
    - job templates

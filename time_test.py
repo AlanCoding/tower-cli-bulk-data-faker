@@ -69,10 +69,12 @@ def find_field_list(creds):
     return fields
 
 def get_endpoint_data(res, **kwargs):
+    endpoint_start_time = time.time()
     r = load_endpoint(res, **kwargs)
+    endpoint_end_time = time.time()
+    manual_time = endpoint_end_time - endpoint_start_time
     if isinstance(r, int):
         return (r, 0, 0, 0)
-    # print ' response: ' + r.text
     if 'X-API-Time' in r.headers:
         api_time = r.headers.get('X-API-Time', None)
         qu_time = r.headers.get('X-API-Query-Time', None)
