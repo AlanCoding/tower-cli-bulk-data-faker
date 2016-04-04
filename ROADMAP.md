@@ -4,12 +4,13 @@
    - that is, creating enough to satisfy a total quota, instead of creating
      the number the user specifies
    - POV user definition can specify `associate with 50% of organizations`
+     - done
  - Point-Of-View teams
    - this needs to link to a Point-Of-View user in order to stress RBAC correctly
  - Output aggregation
-   - Output separate summary file from data creation
    - Statistics on resource creation
    - Include version information somewhere
+     - done
  - Smarter fake data creator, giving convincing names for
    - projects
    - credentials
@@ -18,6 +19,7 @@
      - Scrape Galaxy for data?
  - Data moving crew
    - A command to download remote data and put into YAML file
+   - Push a YAML file to the server
    - A command to migrate local credentials to Tower
    - A command to migrate local Ansible host files to Tower 
 

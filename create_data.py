@@ -6,12 +6,14 @@ from copy import copy
 import time
 import yaml
 import os
-from utils import load_all_creds, get_host_value, id_based_dict
-from utils import unique_marker
+import utils
+from distutils.version import LooseVersion
 
 fake = Factory.create()
 debug = False
 silent = False
+
+current_version = utils.tower_version()
 
 res_list_reference = [
     'organization', 'team', 'project', 'user', 'inventory', 'host',
@@ -62,13 +64,14 @@ res_assoc = {
         'team': {
             'associate': 2
         }
-    },
-    'project': {
+    }
+}
+if LooseVersion(current_version) >= LooseVersion('3.0'):
+    res_assoc['project'] = {
         'organization': {
             'associate_project': 3
         }
     }
-}
 
 def fake_kwargs(n=0, kind=None):
     kwargs = {}
@@ -171,8 +174,8 @@ def create_resource_data(res):
 def create_pov_users(filename):
     with open(filename, 'r') as f:
         pov_data = yaml.load(f.read())
-    cred_data = load_all_creds()
-    towerhost = get_host_value()
+    cred_data = utils.load_all_creds()
+    towerhost = utils.get_host_value()
     user_res = tower_cli.get_resource('user')
     print 'POV users:'
     for username in pov_data:
@@ -221,7 +224,7 @@ def create_pov_users(filename):
             continue
         for target in pov_data[username]:
             res_mod = tower_cli.get_resource(target)
-            targets_list = id_based_dict(res_mod.list(all_pages=True))
+            targets_list = utils.id_based_dict(res_mod.list(all_pages=True))
             if len(targets_list) == 0:
                 print 'PROBLEM: no ' + str(target) + ' resources to add to'
                 print '  the user. This will probably cause a problem.'
@@ -294,9 +297,9 @@ def create_pov_users(filename):
 
 def destroy(res):
     res_mod = tower_cli.get_resource(res)
-    targets_list = id_based_dict(res_mod.list(all_pages=True))
+    targets_list = utils.id_based_dict(res_mod.list(all_pages=True))
     if res == 'user':
-        cred_data = load_all_creds()
+        cred_data = utils.load_all_creds()
         cred_ids = []
         for username in cred_data.keys():
             try:
@@ -331,6 +334,36 @@ def finish(start_time):
     print ''
     print ' total time taken: ' + str(end_time - start_time) + ' seconds'
     sys.exit(0)
+
+def pull_data():
+    master_dict = {}
+    for res in res_list_reference:
+        res_mod = tower_cli.get_resource(res)
+        res_response = res_mod.list(all_pages=True)
+        standard_fields = res_fields[res] + res_extras[res].keys()
+        master_dict[res] = []
+        for entry in res_response:
+            item_dict = {}
+            for field in standard_fields:
+                if field in res_list_reference:
+                    target_mod = tower_cli.get_resource(field)
+                    target_entry = target_mod.get(int(entry[field]))
+                    item_dict[field] = target_entry['name']
+                elif entry[field] == '$encrypted$':
+                    pass
+                else:
+                    item_dict[field] = entry[field]
+            master_dict[res].append(item_dict)
+    print yaml.dump(master_dict, default_flow_style=False)
+
+def push_data(filename):
+    with open(filename, 'r') as f:
+        master_dict = yaml.load(f.read())
+    for res in res_list_reference:
+        if res in master_dict:
+            res_mod = tower_cli.get_resource(res)
+            for entry in master_dict[res]:
+                res_mod.create(**entry)
 
 
 if __name__ == "__main__":
@@ -403,8 +436,16 @@ if __name__ == "__main__":
         else:
             destroy(args[2])
     elif args[1] == 'version':
-        print unique_marker()
+        print utils.unique_marker()
         sys.exit(0)
+    elif args[1] == 'pull':
+        pull_data()
+    elif args[1] == 'push':
+        if len(args) < 3:
+            print 'Specify a file to push YAML data to tower'
+            print '   use: python create_data.py push my_data.yml'
+            sys.exit(0)
+        push_data(args[2])
     else:
         print 'Command not understood'
 
