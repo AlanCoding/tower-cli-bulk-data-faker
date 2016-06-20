@@ -23,17 +23,39 @@ def parse_api_time(html, name):
     m = p.match(html)
     return m.group('time')
 
+def dig_out_yaml(some_text):
+    try:
+        ret_dict = yaml.load(some_text)
+    except:
+        html = some_text
+        html = html.replace('&quot;', '"')
+        p = re.compile('\<\/(span|div)\>(?P<yaml>\{(.|\n)*\})\<\/pre\>')
+        m = p.match(html)
+        # import pdb; pdb.set_trace()
+        yaml_text = m.group('yaml')
+        ret_dict = yaml.load(yaml_text)
+    return ret_dict
+
 def load_endpoint(suffix, creds, soft_error=False):
     if suffix.startswith('/api/v1/'):
         # suffix = suffix.strip('/api/v1/')
         suffix = suffix[8:]
-    built_url = creds['host'].strip('/') + '/api/v1/' + suffix #+ '/?format=json'
+    built_url = creds['host'].strip('/') + '/api/v1/' + suffix.strip('/') + '/?format=json'
+    if suffix == '':
+        built_url = creds['host'].strip('/') + '/api/v1/?format=json'
     with warnings.catch_warnings():
         warnings.simplefilter(
             "ignore", requests.packages.urllib3.exceptions.InsecureRequestWarning)
         r = requests.get(
             built_url,
-            params={'format': 'json'},
+            headers = {
+            'Connection': 'keep-alive',
+            'Cache-Control': 'max-age=0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Upgrade-Insecure-Requests': '1',
+            'Accept-Encoding': 'gzip, deflate, sdch',
+            'Accept-Language': 'en-US,en;q=0.8'
+            },
             auth=(creds['username'], creds['password']), 
             verify=False)
     if r.status_code != 200:
@@ -72,34 +94,34 @@ def get_endpoint_data(res, **kwargs):
     endpoint_start_time = time.time()
     r = load_endpoint(res, **kwargs)
     endpoint_end_time = time.time()
-    manual_time = endpoint_end_time - endpoint_start_time
+    manual_time = round(endpoint_end_time - endpoint_start_time, 3)
     if isinstance(r, int):
-        return (r, 0, 0, 0)
-    if 'X-API-Time' in r.headers:
-        api_time = r.headers.get('X-API-Time', None)
-        qu_time = r.headers.get('X-API-Query-Time', None)
-        qu_count = r.headers.get('X-API-Query-Count', None)
-    else:
+        return (r, 0, 0, 0, 0)
+    def give_header_value(v, r):
+        if v in r.headers:
+            val = r.headers.get(v, None)
+            if val:
+                return val
         try:
-            # Fallback option #1, maybe got API html?
-            api_time = parse_api_time(r.text, 'X-API-Time')
+            return parse_api_time(r.text, v)
         except:
-            # Fallback option #2, not getting data
-            api_time = None
-        try:
-            qu_time = parse_api_time(r.text, 'X-API-Query-Time')
-        except:
-            qu_time = None
-        try:
-            qu_count = parse_api_time(r.text, 'X-API-Query-Count')
-        except:
-            qu_count = None
+            return None
+    api_time = give_header_value('X-API-Time', r)
+    qu_time = give_header_value('X-API-Query-Time', r)
+    qu_count = give_header_value('X-API-Query-Count', r)
 
-    return (r, api_time, qu_time, qu_count)
+    return (r, api_time, qu_time, qu_count, manual_time)
 
 
 def tabulated_format(heading, *cells):
     return heading.ljust(col_1) + ''.join([str(cell).ljust(col_width) for cell in cells])
+
+def force_float(in_arg):
+    try:
+        val = float(in_arg)
+    except:
+        val = float(in_arg.strip('s'))
+    return val
 
 
 def run_timer(creds_file, sample_sublist_views=False, 
@@ -110,27 +132,28 @@ def run_timer(creds_file, sample_sublist_views=False,
     fields = find_field_list(creds)
     print '\nTable of API response times:'
     print '\n top-level list view results'
-    print tabulated_format('endpoint', 'time', 'query', 'queries')
+    print tabulated_format('endpoint', 'time', 'query', 'queries', 'manual')
     for res in fields:
-        r, api_time, qu_time, qu_count = get_endpoint_data(res, creds=creds, soft_error=True)
+        r, api_time, qu_time, qu_count, man_time = get_endpoint_data(res, creds=creds, soft_error=True)
         if isinstance(r, int):
             print res.ljust(col_1) + 'error status_code: ' + str(r)
         else:
-            print tabulated_format(res, api_time, qu_time, qu_count)
-            r_json = yaml.load(r.text)
+            print tabulated_format(res, api_time, qu_time, qu_count, man_time)
+            r_json = dig_out_yaml(r.text)
             if 'count' in r_json:
                 stored_lists[res] = id_based_dict(r_json)
     print ''
 
     if sample_detail_views:
         print '\n detail view statistics (averages)'
-        print tabulated_format('endpoint', 'time', 'query', 'queries')
+        print tabulated_format('endpoint', 'time', 'query', 'queries', 'manual')
         for res in fields:
             if res not in stored_lists:
                 continue
             at_total = 0.0
             qt_total = 0.0
             qu_total = 0
+            man_total = 0.0
             N = detail_sample_size
             res_ids = stored_lists[res]
             if len(res_ids) == 0:
@@ -140,17 +163,18 @@ def run_timer(creds_file, sample_sublist_views=False,
                 res_id = random.choice(res_ids.keys())
                 # endpoint = res + '/' + str(res_id)
                 endpoint = res_ids[res_id]['url']
-                r, api_time, qu_time, qu_count = get_endpoint_data(endpoint, creds=creds)
-                at_float = float(api_time.strip('s'))
+                r, api_time, qu_time, qu_count, man_time = get_endpoint_data(endpoint, creds=creds, soft_error=True)
+                at_float = force_float(api_time)
                 if qu_time is None:
                     qt_float = 0.0
                     qu_count = 0
                 else:
-                    qt_float = float(qu_time.strip('s'))
-                at_total += at_float
-                qt_total += qt_float
+                    qt_float = force_float(qu_time)
+                at_total += at_float or 0
+                qt_total += qt_float or 0
+                man_total += man_time
                 qu_total += int(qu_count)
-            print tabulated_format(res, at_total/N, qt_total/N, qu_total*1.0/N)
+            print tabulated_format(res, at_total/N, qt_total/N, qu_total*1.0/N, man_total*1.0/N)
 
 
     if sample_sublist_views:
@@ -177,11 +201,11 @@ def run_timer(creds_file, sample_sublist_views=False,
                         else:
                             print '    error: bad endpoint type: ' + str(endpoint)
                             continue
-                    r, api_time, qu_time, qu_count = get_endpoint_data(endpoint, creds=creds, soft_error=True)
+                    r, api_time, qu_time, qu_count, man_time = get_endpoint_data(endpoint, creds=creds, soft_error=True)
                     if isinstance(r, int):
                         print '    ' + relationship.ljust(col_1) + 'error: ' + str(r)
                     else:
-                        print '    ' + tabulated_format(relationship, api_time, qu_time, qu_count)
+                        print '    ' + tabulated_format(relationship, api_time, qu_time, qu_count, man_time)
 
 
 def pov_run(sample_sublist_views, 
@@ -222,7 +246,7 @@ if __name__ == "__main__":
     start_time = time.time()
     args = sys.argv
 
-    # Does user ask for stats on detial views?
+    # Does user ask for stats on detail views?
     for i in range(len(args)):
         arg = args[i]
         if arg.endswith('-details') or arg.endswith('-detail'):
@@ -232,6 +256,7 @@ if __name__ == "__main__":
                 detail_sample_size = int(number)
                 args.remove(number)
             args.remove(arg)
+            print '    printing detail view stats'
             break
 
     # Does the user ask for stats on subviews?
@@ -240,6 +265,7 @@ if __name__ == "__main__":
         if arg.endswith('-subviews') or arg.endswith('-subview'):
             sample_sublist_views = True
             args.remove(arg)
+            print '    printing subview stats'
             break
 
     # Does the user want this run for each user in the POV file?
