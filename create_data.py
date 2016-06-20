@@ -133,7 +133,7 @@ def create_resource_data(res):
                 print ('ERROR: one of the specified reference fields has no\n'
                        'existing records to associate with.')
             kwargs[fd] = random.choice(ref_lists[fd])['id']
-        if res == 'project' and i == Nres[res]:
+        if res == 'project' and i == Nres[res] - 1:
             # Avoid race condition where playbook list is unknown
             kwargs['monitor'] = True
         if not silent:
@@ -142,6 +142,16 @@ def create_resource_data(res):
             r = res_mod.create(**kwargs)
             if not silent:
                 print '   created, pk= ' + str(r['id'])
+            if res == 'project' and i == Nres[res] - 1:
+                # Wait until all projects are updated
+                still_updating = 1
+                while still_updating > 0:
+                    proj_list = res_mod.list(all_pages=True)['results']
+                    still_updating = 0
+                    for proj in proj_list:
+                        if proj['status'] != 'successful':
+                            still_updating += 1
+                    print '    projects still updating: ' + str(still_updating)
         else:
             r_list = res_mod.list()['results']
             if len(r_list) == 0:
