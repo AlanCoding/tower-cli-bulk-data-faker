@@ -121,8 +121,12 @@ def create_resource_data(res):
     # Command to create the resource
     res_mod = tower_cli.get_resource(res)
     start_time = time.time()
+    name_set = set()
     for i in range(Nres[res]):
         std_kwargs = fake_kwargs(i, kind=res)
+        if std_kwargs['name'] in name_set:
+            std_kwargs['name'] = std_kwargs['name'] + '_dup'
+        name_set.add(std_kwargs['name'])
         kwargs = {}
         for fd in fields:
             kwargs[fd] = std_kwargs[fd]
@@ -132,7 +136,16 @@ def create_resource_data(res):
             if len(ref_lists[fd]) == 0:
                 print ('ERROR: one of the specified reference fields has no\n'
                        'existing records to associate with.')
-            kwargs[fd] = random.choice(ref_lists[fd])['id']
+            related_res_data = random.choice(ref_lists[fd])
+            if fd == 'project':
+                # Keeping trying new ones if this doesn't have the desired playbook
+                i = 0
+                while related_res_data['scm_url'] != 'https://github.com/AlanCoding/permission-testing-playbooks.git':
+                    related_res_data = random.choice(ref_lists[fd])
+                    i += 1
+                    if i > 1000:
+                        raise Exception('Error finding project to use in JT')
+            kwargs[fd] = related_res_data['id']
         if res == 'project' and i == Nres[res] - 1:
             # Avoid race condition where playbook list is unknown
             kwargs['monitor'] = True
