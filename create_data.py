@@ -124,7 +124,7 @@ def create_resource_data(res):
     name_set = set()
     for i in range(Nres[res]):
         std_kwargs = fake_kwargs(i, kind=res)
-        if std_kwargs['name'] in name_set:
+        while std_kwargs['name'] in name_set:
             std_kwargs['name'] = std_kwargs['name'] + '_dup'
         name_set.add(std_kwargs['name'])
         kwargs = {}
