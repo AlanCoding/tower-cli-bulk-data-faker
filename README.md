@@ -15,7 +15,7 @@ This relies on tower-cli configuration already existing and working.
 ```bash
 tower-cli config username my_user
 tower-cli config password p4ssword
-tower-cli host http://tower.example.com
+tower-cli config host http://tower.example.com
 
 # Make sure the connection is working
 tower-cli user list
