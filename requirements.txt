@@ -1,4 +1,4 @@
 fake-factory
-git+https://github.com/AlanCoding/tower-cli.git@new_rbac_compat
+ansible-tower-cli
 pyyaml
 requests
