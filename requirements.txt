@@ -1,4 +1,4 @@
-fake-factory
 ansible-tower-cli
+Faker==0.7.5
 pyyaml
 requests
