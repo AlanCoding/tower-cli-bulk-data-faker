@@ -159,10 +159,13 @@ def create_resource_data(res):
                 # Wait until all projects are updated
                 still_updating = 1
                 while still_updating > 0:
-                    proj_list = res_mod.list(all_pages=True)['results']
+                    proj_list = res_mod.list(
+                        all_pages=True,
+                        query=(('scm_url', 'https://github.com/AlanCoding/permission-testing-playbooks.git'),)
+                    )['results']
                     still_updating = 0
                     for proj in proj_list:
-                        if proj['status'] != 'successful':
+                        if proj['status'] == 'running':
                             still_updating += 1
                     print '    projects still updating: ' + str(still_updating)
         else:
