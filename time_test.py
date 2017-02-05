@@ -25,13 +25,17 @@ def parse_api_time(html, name):
 
 def dig_out_yaml(some_text):
     try:
-        ret_dict = yaml.load(some_text)
+        ret_dict = json.loads(some_text)
+        assert isinstance(ret_dict, dict)
     except:
         html = some_text
         html = html.replace('&quot;', '"')
         p = re.compile('\<\/(span|div)\>(?P<yaml>\{(.|\n)*\})\<\/pre\>')
         m = p.match(html)
         # import pdb; pdb.set_trace()
+        if m is None:
+            print ' failed to correct get data\n first part of text\n'
+            print some_text[:30] + '\n'
         yaml_text = m.group('yaml')
         ret_dict = yaml.load(yaml_text)
     return ret_dict
