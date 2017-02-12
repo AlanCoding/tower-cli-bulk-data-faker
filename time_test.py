@@ -199,7 +199,7 @@ def run_timer(creds_file, sample_sublist_views=False,
                 related_dict = item_dict['related']
                 for relationship in related_dict:
                     endpoint = related_dict[relationship]
-                    if not isinstance(endpoint, str):
+                    if not isinstance(endpoint, basestring):
                         if len(endpoint) == 1:
                             endpoint = endpoint[0]
                         else:
