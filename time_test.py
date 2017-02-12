@@ -164,7 +164,7 @@ def run_timer(creds_file, sample_sublist_views=False,
                 print res.ljust(col_1) + 'no_records'
                 continue
             for i in range(N):
-                res_id = random.choice(res_ids.keys())
+                res_id = res_ids.keys()[i]
                 # endpoint = res + '/' + str(res_id)
                 endpoint = res_ids[res_id]['url']
                 r, api_time, qu_time, qu_count, man_time = get_endpoint_data(endpoint, creds=creds, soft_error=True)
@@ -194,7 +194,7 @@ def run_timer(creds_file, sample_sublist_views=False,
                 print '    ' + res.ljust(col_1) + 'no_records'
                 continue
             for i in range(N):
-                res_id = random.choice(res_dict.keys())
+                res_id = res_dict.keys()[i]
                 item_dict = res_dict[res_id]
                 related_dict = item_dict['related']
                 for relationship in related_dict:
