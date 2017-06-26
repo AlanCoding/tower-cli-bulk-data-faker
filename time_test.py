@@ -41,12 +41,13 @@ def dig_out_yaml(some_text):
     return ret_dict
 
 def load_endpoint(suffix, creds, soft_error=False):
-    if suffix.startswith('/api/v1/'):
-        # suffix = suffix.strip('/api/v1/')
+    if suffix.startswith('/api/v1/') or suffix.startswith('/api/v2/'):
         suffix = suffix[8:]
-    built_url = creds['host'].strip('/') + '/api/v1/' + suffix.strip('/') + '/?format=json'
+    if suffix.endswith('?format=json'):
+        suffix = suffix.split('?')[0]
+    built_url = creds['host'].strip('/') + '/api/v2/' + suffix.strip('/') + '/?format=json'
     if suffix == '':
-        built_url = creds['host'].strip('/') + '/api/v1/?format=json'
+        built_url = creds['host'].strip('/') + '/api/v2/?format=json'
     with warnings.catch_warnings():
         warnings.simplefilter(
             "ignore", requests.packages.urllib3.exceptions.InsecureRequestWarning)
@@ -85,7 +86,18 @@ def read_creds(filename):
 def find_field_list(creds):
     try:
         r = load_json('', creds)
-        fields = [v[8:].strip('/') for v in r.values() if 'authtoken' not in v and 'system_job' not in v]
+        fields = []
+        for link in r.values():
+            if 'authtoken' in link or 'system_job' in link:
+                continue
+            if 'api/v2' in link:
+                loc = link.split('/').index('v2') + 1
+            elif 'api/v1' in link:
+                loc = link.split('/').index('v2') + 1
+            else:
+                raise Exception('Could not get resource from root view link')
+            resource = link.split('/')[loc]
+            fields.append(resource)
     except:
         print 'NOTICE: failed to load JSON response from server'
         fields = [
@@ -207,7 +219,7 @@ def run_timer(creds_file, sample_sublist_views=False,
                             continue
                     r, api_time, qu_time, qu_count, man_time = get_endpoint_data(endpoint, creds=creds, soft_error=True)
                     if isinstance(r, int):
-                        print '    ' + relationship.ljust(col_1) + 'error: ' + str(r)
+                        print '    ' + relationship.ljust(col_1) + 'error: ' + str(r) + ' endpoint: ' + str(endpoint)
                     else:
                         print '    ' + tabulated_format(relationship, api_time, qu_time, qu_count, man_time)
 
