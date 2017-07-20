@@ -46,7 +46,7 @@ res_extras = {
     'project': {
         'scm_type': 'git',
         'scm_url': 'https://github.com/AlanCoding/permission-testing-playbooks.git',
-        'monitor': False
+        'wait': False
     },
     'job_template': {
         'playbook': 'helloworld.yml'
@@ -148,7 +148,7 @@ def create_resource_data(res):
             kwargs[fd] = related_res_data['id']
         if res == 'project' and i == Nres[res] - 1:
             # Avoid race condition where playbook list is unknown
-            kwargs['monitor'] = True
+            kwargs['wait'] = True
         if not silent:
             print ' ' + res + ' ' + ' '.join([str(k) + '=' + str(kwargs[k]) for k in kwargs])
         if not debug:

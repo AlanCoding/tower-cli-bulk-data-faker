@@ -4,7 +4,7 @@ import sys
 import cStringIO
 from datetime import datetime
 
-from tower_cli.commands.config import echo_setting
+from tower_cli.cli.misc import _echo_setting
 
 def tower_version():
     from tower_cli.api import client
@@ -28,7 +28,7 @@ def get_tower_cli_config(key):
     stdout_save = sys.stdout
     stream = cStringIO.StringIO()
     sys.stdout = stream
-    echo_setting(key)
+    _echo_setting(key)
     sys.stdout = stdout_save
     printed_str = stream.getvalue()
     return_str = printed_str.strip('\n')
@@ -39,7 +39,7 @@ def get_host_value():
     stdout_save = sys.stdout
     stream = cStringIO.StringIO()
     sys.stdout = stream
-    echo_setting('host')
+    _echo_setting('host')
     sys.stdout = stdout_save
     variable = stream.getvalue()
     return variable[6:].strip('\n')
